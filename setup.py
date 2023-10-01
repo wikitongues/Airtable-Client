@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="wt_airtable_client",
-    version="0.0.1",
+    version="1.0.0",
     description="Airtable client library",
     author="Wikitongues",
     license="MIT",

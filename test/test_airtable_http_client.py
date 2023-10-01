@@ -1,4 +1,5 @@
 import json
+from typing import Any, Dict
 
 import pytest
 import responses
@@ -8,6 +9,7 @@ from wt_airtable_client import (
     AirtableBadResponseError,
     AirtableConnectionInfo,
     AirtableHttpClient,
+    AirtableRecord,
     AirtableTableInfo,
 )
 
@@ -25,9 +27,21 @@ class TestAirtableHttpClient:
     def client(self):
         return AirtableHttpClient(CONNECTION_INFO, TABLE_INFO)
 
+    @staticmethod
+    def record_to_dict(record: AirtableRecord) -> Dict[str, Any]:
+        return {
+            "id": record.id,
+            "fields": record.fields,
+            "createdTime": "2018-08-02T13:25:34.000Z",  # TODO
+        }
+
     @responses.activate
-    def test_list_records(self, client):
-        text = "expected text"
+    def test_list_records(self, client: AirtableHttpClient):
+        expected_records = [
+            AirtableRecord(id="rec1", fields={"Field 1": "Value 1"}),
+            AirtableRecord(id="rec2", fields={"Field 2": "Value 2"}),
+            AirtableRecord(id="rec3", fields={"Field 3": "Value 3"}),
+        ]
         page_size = 3
         offset = "rec123"
         max_records = 10
@@ -40,17 +54,21 @@ class TestAirtableHttpClient:
             if request.headers["Authorization"] != f"Bearer {API_KEY}":
                 return (401, {}, None)
 
-            return (200, {}, text)
+            return (
+                200,
+                {},
+                json.dumps({"records": [TestAirtableHttpClient.record_to_dict(record) for record in expected_records]}),
+            )
 
         responses.add_callback(responses.GET, url, callback=callback)
 
         result = client.list_records(page_size=page_size, offset=offset, max_records=max_records)
 
-        assert result.text == text
+        assert list(result) == expected_records
 
     @responses.activate
-    def test_get_record(self, client):
-        fields = {"Field 1": "Value 1"}
+    def test_get_record(self, client: AirtableHttpClient):
+        expected_record = AirtableRecord(id="rec1", fields={"Field 1": "Value 1"})
         id = "id123"
         url = (
             f"https://api.airtable.com/v0/{BASE_ID}/{TABLE}?filterByFormula="
@@ -64,24 +82,16 @@ class TestAirtableHttpClient:
             if request.headers["Authorization"] != f"Bearer {API_KEY}":
                 return (401, {}, None)
 
-            return (
-                200,
-                {},
-                json.dumps(
-                    {
-                        "records": [{"fields": fields}],
-                    }
-                ),
-            )
+            return (200, {}, json.dumps({"records": [TestAirtableHttpClient.record_to_dict(expected_record)]}))
 
         responses.add_callback(responses.GET, url, callback=callback)
 
         result = client.get_record(id)
 
-        assert result == fields
+        assert result == expected_record
 
     @responses.activate
-    def test_get_record__error(self, client):
+    def test_get_record__error(self, client: AirtableHttpClient):
         id = "id123"
         url = (
             f"https://api.airtable.com/v0/{BASE_ID}/{TABLE}?filterByFormula="
@@ -103,7 +113,7 @@ class TestAirtableHttpClient:
             {"records": [{"fields": {}}, {"fields": {}}]},
         ],
     )
-    def test_get_record__bad_response(self, j, client):
+    def test_get_record__bad_response(self, j, client: AirtableHttpClient):
         id = "id123"
         url = (
             f"https://api.airtable.com/v0/{BASE_ID}/{TABLE}?filterByFormula="
@@ -115,8 +125,12 @@ class TestAirtableHttpClient:
             client.get_record(id)
 
     @responses.activate
-    def test_get_records_by_fields(self, client):
-        text = "expected text"
+    def test_get_records_by_fields(self, client: AirtableHttpClient):
+        expected_records = [
+            AirtableRecord(id="rec1", fields={"Field 1": "Value 1"}),
+            AirtableRecord(id="rec2", fields={"Field 2": "Value 2"}),
+            AirtableRecord(id="rec3", fields={"Field 3": "Value 3"}),
+        ]
         iso = "sah"
         resource_url = "http://www.baayaga.narod.ru"
         fields = {"Subject [ISO Code]": iso, "Coverage [Web: Link]": resource_url}
@@ -132,17 +146,25 @@ class TestAirtableHttpClient:
             if request.headers["Authorization"] != f"Bearer {API_KEY}":
                 return (401, {}, None)
 
-            return (200, {}, text)
+            return (
+                200,
+                {},
+                json.dumps({"records": [TestAirtableHttpClient.record_to_dict(record) for record in expected_records]}),
+            )
 
         responses.add_callback(responses.GET, url, callback=callback)
 
         result = client.get_records_by_fields(fields)
 
-        assert result.text == text
+        assert list(result) == expected_records
 
     @responses.activate
-    def test_get_records_by_fields__null_value(self, client):
-        text = "expected text"
+    def test_get_records_by_fields__null_value(self, client: AirtableHttpClient):
+        expected_records = [
+            AirtableRecord(id="rec1", fields={"Field 1": "Value 1"}),
+            AirtableRecord(id="rec2", fields={"Field 2": "Value 2"}),
+            AirtableRecord(id="rec3", fields={"Field 3": "Value 3"}),
+        ]
         resource_url = "http://www.baayaga.narod.ru"
         fields = {"Subject [ISO Code]": None, "Coverage [Web: Link]": resource_url}
         url = (
@@ -157,19 +179,23 @@ class TestAirtableHttpClient:
             if request.headers["Authorization"] != f"Bearer {API_KEY}":
                 return (401, {}, None)
 
-            return (200, {}, text)
+            return (
+                200,
+                {},
+                json.dumps({"records": [TestAirtableHttpClient.record_to_dict(record) for record in expected_records]}),
+            )
 
         responses.add_callback(responses.GET, url, callback=callback)
 
         result = client.get_records_by_fields(fields)
 
-        assert result.text == text
+        assert list(result) == expected_records
 
     @responses.activate
-    def test_create_record(self, client):
-        text = "expected text"
+    def test_create_record(self, client: AirtableHttpClient):
+        expected_record = AirtableRecord(id="rec1", fields={"Field 1": "Value 1"})
         url = f"https://api.airtable.com/v0/{BASE_ID}/{TABLE}"
-        fields = {"a": "a", "b": "b", "c": "c"}
+        fields = {"Field 1": "Value 1"}
 
         def callback(request):
             if request.headers["Authorization"] != f"Bearer {API_KEY}":
@@ -186,10 +212,10 @@ class TestAirtableHttpClient:
             if type(json_obj["records"][0]["fields"]) != dict:
                 return (400, {}, None)
 
-            return (200, {}, text)
+            return (200, {}, json.dumps({"records": [TestAirtableHttpClient.record_to_dict(expected_record)]}))
 
         responses.add_callback(responses.POST, url, callback=callback)
 
         result = client.create_record(fields)
 
-        assert result.text == text
+        assert result == expected_record

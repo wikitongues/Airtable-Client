@@ -1,7 +1,6 @@
-import json
 import urllib.parse
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, NamedTuple, Optional
 
 import requests
 from requests import Response
@@ -25,6 +24,16 @@ class AirtableApiError(AirtableHttpClientError):
 
 class AirtableBadResponseError(AirtableHttpClientError):
     pass
+
+
+class AirtableRecord(NamedTuple):
+    id: str
+    fields: Dict[str, Any]
+    # TODO created_time
+
+    @classmethod
+    def from_dict(cls, d) -> "AirtableRecord":
+        return cls(id=d["id"], fields=d["fields"])
 
 
 class AirtableHttpClient:
@@ -55,6 +64,26 @@ class AirtableHttpClient:
             raise AirtableApiError
 
     @staticmethod
+    def _unpack_records(response: Response) -> Iterable[AirtableRecord]:
+        j = response.json()
+        if "records" not in j or type(j["records"]) != list:
+            raise AirtableBadResponseError
+        try:
+            return (AirtableRecord.from_dict(d) for d in j["records"])
+        except KeyError:
+            raise AirtableBadResponseError
+
+    @staticmethod
+    def _unpack_single_record(response: Response) -> AirtableRecord:
+        j = response.json()
+        if "records" not in j or type(j["records"]) != list or len(j["records"]) != 1:
+            raise AirtableBadResponseError
+        try:
+            return AirtableRecord.from_dict(j["records"][0])
+        except KeyError:
+            raise AirtableBadResponseError
+
+    @staticmethod
     def _handle_cell_format_params(
         params: List[str],
         cell_format: Optional[CellFormat] = None,
@@ -79,7 +108,7 @@ class AirtableHttpClient:
         cell_format: Optional[CellFormat] = None,
         time_zone: Optional[str] = None,
         user_locale: Optional[str] = None,
-    ) -> Response:
+    ) -> Iterable[AirtableRecord]:
         params = [f"maxRecords={max_records}"]
 
         if page_size is not None:
@@ -92,7 +121,11 @@ class AirtableHttpClient:
 
         url = f'{self._route}?{"&".join(params)}'
 
-        return requests.get(url, headers=self._headers)
+        response = requests.get(url, headers=self._headers)
+
+        AirtableHttpClient._check_response(response)
+
+        return AirtableHttpClient._unpack_records(response)
 
     def get_record(
         self,
@@ -101,7 +134,7 @@ class AirtableHttpClient:
         cell_format: Optional[CellFormat] = None,
         time_zone: Optional[str] = None,
         user_locale: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> AirtableRecord:
         formula = urllib.parse.quote_plus(f"FIND('{id}', {{{self._id_column}}}) != 0")
         params = [f"filterByFormula={formula}"]
         AirtableHttpClient._handle_cell_format_params(params, cell_format, time_zone, user_locale)
@@ -112,16 +145,7 @@ class AirtableHttpClient:
 
         AirtableHttpClient._check_response(response)
 
-        j = json.loads(response.text)
-        if (
-            "records" not in j
-            or type(j["records"]) != list
-            or len(j["records"]) != 1
-            or "fields" not in j["records"][0]
-        ):
-            raise AirtableBadResponseError
-
-        return j["records"][0]["fields"]
+        return AirtableHttpClient._unpack_single_record(response)
 
     def get_records_by_fields(
         self,
@@ -130,7 +154,7 @@ class AirtableHttpClient:
         cell_format: Optional[CellFormat] = None,
         time_zone: Optional[str] = None,
         user_locale: Optional[str] = None,
-    ) -> Response:
+    ) -> Iterable[AirtableRecord]:
         formula = "AND("
         formula += ",".join(["{" + key + "}='" + fields[key] + "'" for key in sorted(fields) if fields[key]])
         formula += ")"
@@ -140,11 +164,19 @@ class AirtableHttpClient:
 
         url = f'{self._route}?{"&".join(params)}'
 
-        return requests.get(url, headers=self._headers)
+        response = requests.get(url, headers=self._headers)
 
-    def create_record(self, fields: dict) -> Response:
+        AirtableHttpClient._check_response(response)
+
+        return AirtableHttpClient._unpack_records(response)
+
+    def create_record(self, fields: dict) -> AirtableRecord:
         json_obj = {"records": [{"fields": fields}]}
 
         headers = {**self._headers, "Content-Type": "application/json"}
 
-        return requests.post(self._route, json=json_obj, headers=headers)
+        response = requests.post(self._route, json=json_obj, headers=headers)
+
+        AirtableHttpClient._check_response(response)
+
+        return AirtableHttpClient._unpack_single_record(response)
