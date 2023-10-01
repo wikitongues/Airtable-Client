@@ -1,10 +1,15 @@
 import json
-import unittest
 
+import pytest
 import responses
-from wt_airtable_client.airtable_connection_info import AirtableConnectionInfo
-from wt_airtable_client.airtable_http_client import AirtableHttpClient
-from wt_airtable_client.airtable_table_info import AirtableTableInfo
+
+from wt_airtable_client import (
+    AirtableApiError,
+    AirtableBadResponseError,
+    AirtableConnectionInfo,
+    AirtableHttpClient,
+    AirtableTableInfo,
+)
 
 BASE_ID = "base_id"
 API_KEY = "api_key"
@@ -15,12 +20,13 @@ CONNECTION_INFO = AirtableConnectionInfo(BASE_ID, API_KEY)
 TABLE_INFO = AirtableTableInfo(TABLE, ID_COLUMN)
 
 
-class TestAirtableHttpClient(unittest.TestCase):
-    def setUp(self):
-        self.client = AirtableHttpClient(CONNECTION_INFO, TABLE_INFO)
+class TestAirtableHttpClient:
+    @pytest.fixture
+    def client(self):
+        return AirtableHttpClient(CONNECTION_INFO, TABLE_INFO)
 
     @responses.activate
-    def test_list_records(self):
+    def test_list_records(self, client):
         text = "expected text"
         page_size = 3
         offset = "rec123"
@@ -38,13 +44,13 @@ class TestAirtableHttpClient(unittest.TestCase):
 
         responses.add_callback(responses.GET, url, callback=callback)
 
-        result = self.client.list_records(page_size=page_size, offset=offset, max_records=max_records)
+        result = client.list_records(page_size=page_size, offset=offset, max_records=max_records)
 
-        self.assertEqual(result.text, text)
+        assert result.text == text
 
     @responses.activate
-    def test_get_record(self):
-        text = "expected text"
+    def test_get_record(self, client):
+        fields = {"Field 1": "Value 1"}
         id = "id123"
         url = (
             f"https://api.airtable.com/v0/{BASE_ID}/{TABLE}?filterByFormula="
@@ -58,16 +64,58 @@ class TestAirtableHttpClient(unittest.TestCase):
             if request.headers["Authorization"] != f"Bearer {API_KEY}":
                 return (401, {}, None)
 
-            return (200, {}, text)
+            return (
+                200,
+                {},
+                json.dumps(
+                    {
+                        "records": [{"fields": fields}],
+                    }
+                ),
+            )
 
         responses.add_callback(responses.GET, url, callback=callback)
 
-        result = self.client.get_record(id)
+        result = client.get_record(id)
 
-        self.assertEqual(result.text, text)
+        assert result == fields
 
     @responses.activate
-    def test_get_records_by_fields(self):
+    def test_get_record__error(self, client):
+        id = "id123"
+        url = (
+            f"https://api.airtable.com/v0/{BASE_ID}/{TABLE}?filterByFormula="
+            f"FIND%28%27{id}%27%2C+%7B{ID_COLUMN}%7D%29+%21%3D+0"
+        )
+        responses.add(responses.GET, url, status=404)
+
+        with pytest.raises(AirtableApiError):
+            client.get_record(id)
+
+    @responses.activate
+    @pytest.mark.parametrize(
+        "j",
+        [
+            {},
+            {"records": []},
+            {"records": {}},
+            {"records": [{}]},
+            {"records": [{"fields": {}}, {"fields": {}}]},
+        ],
+    )
+    def test_get_record__bad_response(self, j, client):
+        id = "id123"
+        url = (
+            f"https://api.airtable.com/v0/{BASE_ID}/{TABLE}?filterByFormula="
+            f"FIND%28%27{id}%27%2C+%7B{ID_COLUMN}%7D%29+%21%3D+0"
+        )
+        responses.add(responses.GET, url, json=j, status=200)
+
+        with pytest.raises(AirtableBadResponseError):
+            client.get_record(id)
+
+    @responses.activate
+    def test_get_records_by_fields(self, client):
         text = "expected text"
         iso = "sah"
         resource_url = "http://www.baayaga.narod.ru"
@@ -88,12 +136,12 @@ class TestAirtableHttpClient(unittest.TestCase):
 
         responses.add_callback(responses.GET, url, callback=callback)
 
-        result = self.client.get_records_by_fields(fields)
+        result = client.get_records_by_fields(fields)
 
-        self.assertEqual(result.text, text)
+        assert result.text == text
 
     @responses.activate
-    def test_get_records_by_fields__null_value(self):
+    def test_get_records_by_fields__null_value(self, client):
         text = "expected text"
         resource_url = "http://www.baayaga.narod.ru"
         fields = {"Subject [ISO Code]": None, "Coverage [Web: Link]": resource_url}
@@ -113,12 +161,12 @@ class TestAirtableHttpClient(unittest.TestCase):
 
         responses.add_callback(responses.GET, url, callback=callback)
 
-        result = self.client.get_records_by_fields(fields)
+        result = client.get_records_by_fields(fields)
 
-        self.assertEqual(result.text, text)
+        assert result.text == text
 
     @responses.activate
-    def test_create_record(self):
+    def test_create_record(self, client):
         text = "expected text"
         url = f"https://api.airtable.com/v0/{BASE_ID}/{TABLE}"
         fields = {"a": "a", "b": "b", "c": "c"}
@@ -142,6 +190,6 @@ class TestAirtableHttpClient(unittest.TestCase):
 
         responses.add_callback(responses.POST, url, callback=callback)
 
-        result = self.client.create_record(fields)
+        result = client.create_record(fields)
 
-        self.assertEqual(result.text, text)
+        assert result.text == text

@@ -1,7 +1,7 @@
+import json
 import urllib.parse
-from abc import ABC, abstractmethod
 from enum import Enum
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 import requests
 from requests import Response
@@ -15,71 +15,21 @@ class CellFormat(Enum):
     STRING = "string"
 
 
-class IAirtableHttpClient(ABC):
-    """
-    Airtable Http Client Interface
-
-    Args:
-        ABC
-    """
-
-    @abstractmethod
-    def list_records(
-        self,
-        page_size: Optional[int] = 100,
-        offset: Optional[str] = None,
-        max_records: Optional[int] = None,
-        cell_format: Optional[CellFormat] = None,
-        time_zone: Optional[str] = None,
-        user_locale: Optional[str] = None,
-    ) -> Response:
-        """
-        List records
-
-        Args:
-            page_size (int, optional): Page size. Defaults to 100.
-            offset (str, optional): Offset for pagination. Defaults to None.
-            max_records (int, optional): Max records. Defaults to None.
-        """
-        pass
-
-    @abstractmethod
-    def get_record(self, id: str) -> Response:
-        """
-        Get record
-
-        Args:
-            id (str): Id of record
-        """
-        pass
-
-    @abstractmethod
-    def get_records_by_fields(self, fields: dict) -> Response:
-        """
-        Get any records matching the given fields
-
-        Args:
-            fields (dict): Dictionary of fields
-        """
-        pass
-
-    @abstractmethod
-    def create_record(self, fields: dict) -> Response:
-        """
-        Create record
-
-        Args:
-            fields (dict): Dictionary of fields
-        """
-        pass
+class AirtableHttpClientError(Exception):
+    pass
 
 
-class AirtableHttpClient(IAirtableHttpClient):
+class AirtableApiError(AirtableHttpClientError):
+    pass
+
+
+class AirtableBadResponseError(AirtableHttpClientError):
+    pass
+
+
+class AirtableHttpClient:
     """
     Http client for accessing an Airtable base
-
-    Args:
-        IAirtableHttpClient
     """
 
     _base_url = "https://api.airtable.com/v0"
@@ -98,6 +48,11 @@ class AirtableHttpClient(IAirtableHttpClient):
         self._headers = {"Authorization": f"Bearer {connection_info.api_key}"}
 
         self._id_column = table_info.id_column
+
+    @staticmethod
+    def _check_response(response: Response) -> None:
+        if response.status_code != 200:
+            raise AirtableApiError
 
     @staticmethod
     def _handle_cell_format_params(
@@ -146,14 +101,27 @@ class AirtableHttpClient(IAirtableHttpClient):
         cell_format: Optional[CellFormat] = None,
         time_zone: Optional[str] = None,
         user_locale: Optional[str] = None,
-    ) -> Response:
+    ) -> Dict[str, Any]:
         formula = urllib.parse.quote_plus(f"FIND('{id}', {{{self._id_column}}}) != 0")
         params = [f"filterByFormula={formula}"]
         AirtableHttpClient._handle_cell_format_params(params, cell_format, time_zone, user_locale)
 
         url = f'{self._route}?{"&".join(params)}'
 
-        return requests.get(url, headers=self._headers)
+        response = requests.get(url, headers=self._headers)
+
+        AirtableHttpClient._check_response(response)
+
+        j = json.loads(response.text)
+        if (
+            "records" not in j
+            or type(j["records"]) != list
+            or len(j["records"]) != 1
+            or "fields" not in j["records"][0]
+        ):
+            raise AirtableBadResponseError
+
+        return j["records"][0]["fields"]
 
     def get_records_by_fields(
         self,

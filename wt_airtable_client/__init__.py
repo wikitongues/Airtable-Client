@@ -1,3 +1,9 @@
 from .airtable_connection_info import AirtableConnectionInfo
-from .airtable_http_client import AirtableHttpClient, CellFormat, IAirtableHttpClient
+from .airtable_http_client import (
+    AirtableApiError,
+    AirtableBadResponseError,
+    AirtableHttpClient,
+    AirtableHttpClientError,
+    CellFormat,
+)
 from .airtable_table_info import AirtableTableInfo
