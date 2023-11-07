@@ -3,9 +3,9 @@ from typing import Any, Dict
 
 import pytest
 import responses
+from requests import HTTPError
 
 from wt_airtable_client import (
-    AirtableApiError,
     AirtableBadResponseError,
     AirtableConnectionInfo,
     AirtableHttpClient,
@@ -119,7 +119,7 @@ class TestAirtableHttpClient:
         )
         responses.add(responses.GET, url, status=404)
 
-        with pytest.raises(AirtableApiError):
+        with pytest.raises(HTTPError):
             client.get_record(id)
 
     @responses.activate

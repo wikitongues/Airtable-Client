@@ -18,10 +18,6 @@ class AirtableHttpClientError(Exception):
     pass
 
 
-class AirtableApiError(AirtableHttpClientError):
-    pass
-
-
 class AirtableBadResponseError(AirtableHttpClientError):
     pass
 
@@ -57,11 +53,6 @@ class AirtableHttpClient:
         self._headers = {"Authorization": f"Bearer {connection_info.api_key}"}
 
         self._id_column = table_info.id_column
-
-    @staticmethod
-    def _check_response(response: Response) -> None:
-        if response.status_code != 200:
-            raise AirtableApiError
 
     @staticmethod
     def _unpack_records(response: Response) -> Iterable[AirtableRecord]:
@@ -133,7 +124,7 @@ class AirtableHttpClient:
 
         response = requests.get(url, headers=self._headers)
 
-        AirtableHttpClient._check_response(response)
+        response.raise_for_status()
 
         yield from AirtableHttpClient._unpack_records(response)
 
@@ -164,7 +155,7 @@ class AirtableHttpClient:
 
         response = requests.get(url, headers=self._headers)
 
-        AirtableHttpClient._check_response(response)
+        response.raise_for_status()
 
         return AirtableHttpClient._unpack_single_record(response)
 
@@ -191,7 +182,7 @@ class AirtableHttpClient:
 
         response = requests.get(url, headers=self._headers)
 
-        AirtableHttpClient._check_response(response)
+        response.raise_for_status()
 
         yield from AirtableHttpClient._unpack_records(response)
 
@@ -214,7 +205,7 @@ class AirtableHttpClient:
 
         response = requests.post(self._route, json=json_obj, headers=headers)
 
-        AirtableHttpClient._check_response(response)
+        response.raise_for_status()
 
         return AirtableHttpClient._unpack_single_record(response)
 
@@ -225,6 +216,6 @@ class AirtableHttpClient:
 
         response = requests.put(f"{self._route}/{id}", json=json_obj, headers=headers)
 
-        AirtableHttpClient._check_response(response)
+        response.raise_for_status()
 
         return AirtableRecord.from_dict(response.json())
