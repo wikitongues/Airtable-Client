@@ -264,3 +264,32 @@ class TestAirtableHttpClient:
         result = client.create_record(fields)
 
         assert result == expected_record
+
+    @responses.activate
+    def test_update_record(self, client: AirtableHttpClient):
+        id = "rec1"
+        fields = {"Field 1": "Value 1"}
+        expected_url = f"https://api.airtable.com/v0/{BASE_ID}/{TABLE}/{id}"
+        expected_record = AirtableRecord(id=id, fields=fields)
+
+        def callback(request):
+            if request.headers["Authorization"] != f"Bearer {API_KEY}":
+                return (401, {}, None)
+
+            json_obj = json.loads(request.body)
+            if type(json_obj["fields"]) != dict:
+                return (400, {}, None)
+
+            if json_obj["fields"] != fields:
+                return (400, {}, None)
+
+            if request.url == expected_url:
+                return (200, {}, json.dumps(TestAirtableHttpClient.record_to_dict(expected_record)))
+
+            return (404, {}, None)
+
+        responses.add_callback(responses.PUT, expected_url, callback=callback)
+
+        result = client.update_record(id, fields)
+
+        assert result == expected_record

@@ -217,3 +217,14 @@ class AirtableHttpClient:
         AirtableHttpClient._check_response(response)
 
         return AirtableHttpClient._unpack_single_record(response)
+
+    def update_record(self, id: str, fields: dict) -> AirtableRecord:
+        json_obj = {"fields": fields}
+
+        headers = {**self._headers, "Content-Type": "application/json"}
+
+        response = requests.put(f"{self._route}/{id}", json=json_obj, headers=headers)
+
+        AirtableHttpClient._check_response(response)
+
+        return AirtableRecord.from_dict(response.json())
