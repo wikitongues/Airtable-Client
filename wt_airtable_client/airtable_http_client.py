@@ -69,7 +69,7 @@ class AirtableHttpClient:
         if "records" not in j or type(j["records"]) != list:
             raise AirtableBadResponseError
         try:
-            return (AirtableRecord.from_dict(d) for d in j["records"])
+            yield from (AirtableRecord.from_dict(d) for d in j["records"])
         except KeyError:
             raise AirtableBadResponseError
 
@@ -82,6 +82,22 @@ class AirtableHttpClient:
             return AirtableRecord.from_dict(j["records"][0])
         except KeyError:
             raise AirtableBadResponseError
+
+    @staticmethod
+    def _handle_pagination_params(
+        params: List[str],
+        page_size: Optional[int] = 100,
+        offset: Optional[str] = None,
+        max_records: Optional[int] = None,
+    ):
+        if max_records is not None:
+            params.append(f"maxRecords={max_records}")
+
+        if page_size is not None:
+            params.append(f"pageSize={page_size}")
+
+        if offset is not None:
+            params.append(f"offset={offset}")
 
     @staticmethod
     def _handle_cell_format_params(
@@ -102,21 +118,15 @@ class AirtableHttpClient:
     def list_records(
         self,
         *,
-        page_size: Optional[int] = 100,
+        page_size: Optional[int] = None,
         offset: Optional[str] = None,
         max_records: Optional[int] = None,
         cell_format: Optional[CellFormat] = None,
         time_zone: Optional[str] = None,
         user_locale: Optional[str] = None,
-    ) -> Iterable[AirtableRecord]:
-        params = [f"maxRecords={max_records}"]
-
-        if page_size is not None:
-            params.append(f"pageSize={page_size}")
-
-        if offset is not None:
-            params.append(f"offset={offset}")
-
+    ):
+        params = []
+        AirtableHttpClient._handle_pagination_params(params, page_size, offset, max_records)
         AirtableHttpClient._handle_cell_format_params(params, cell_format, time_zone, user_locale)
 
         url = f'{self._route}?{"&".join(params)}'
@@ -125,7 +135,18 @@ class AirtableHttpClient:
 
         AirtableHttpClient._check_response(response)
 
-        return AirtableHttpClient._unpack_records(response)
+        yield from AirtableHttpClient._unpack_records(response)
+
+        j = response.json()
+        if "offset" in j:
+            yield from self.list_records(
+                page_size=page_size,
+                offset=j["offset"],
+                max_records=max_records,
+                cell_format=cell_format,
+                time_zone=time_zone,
+                user_locale=user_locale,
+            )
 
     def get_record(
         self,
@@ -151,6 +172,9 @@ class AirtableHttpClient:
         self,
         fields: dict,
         *,
+        page_size: Optional[int] = None,
+        offset: Optional[str] = None,
+        max_records: Optional[int] = None,
         cell_format: Optional[CellFormat] = None,
         time_zone: Optional[str] = None,
         user_locale: Optional[str] = None,
@@ -160,6 +184,7 @@ class AirtableHttpClient:
         formula += ")"
         formula = urllib.parse.quote_plus(formula)
         params = [f"filterByFormula={formula}"]
+        AirtableHttpClient._handle_pagination_params(params, page_size, offset, max_records)
         AirtableHttpClient._handle_cell_format_params(params, cell_format, time_zone, user_locale)
 
         url = f'{self._route}?{"&".join(params)}'
@@ -168,7 +193,19 @@ class AirtableHttpClient:
 
         AirtableHttpClient._check_response(response)
 
-        return AirtableHttpClient._unpack_records(response)
+        yield from AirtableHttpClient._unpack_records(response)
+
+        j = response.json()
+        if "offset" in j:
+            yield from self.get_records_by_fields(
+                fields,
+                page_size=page_size,
+                offset=j["offset"],
+                max_records=max_records,
+                cell_format=cell_format,
+                time_zone=time_zone,
+                user_locale=user_locale,
+            )
 
     def create_record(self, fields: dict) -> AirtableRecord:
         json_obj = {"records": [{"fields": fields}]}
