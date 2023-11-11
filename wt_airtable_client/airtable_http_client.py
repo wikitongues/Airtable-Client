@@ -214,7 +214,7 @@ class AirtableHttpClient:
 
         headers = {**self._headers, "Content-Type": "application/json"}
 
-        response = requests.put(f"{self._route}/{id}", json=json_obj, headers=headers)
+        response = requests.patch(f"{self._route}/{id}", json=json_obj, headers=headers)
 
         response.raise_for_status()
 

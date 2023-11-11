@@ -288,7 +288,7 @@ class TestAirtableHttpClient:
 
             return (404, {}, None)
 
-        responses.add_callback(responses.PUT, expected_url, callback=callback)
+        responses.add_callback(responses.PATCH, expected_url, callback=callback)
 
         result = client.update_record(id, fields)
 
